@@ -1,0 +1,11 @@
+# Example PMCID file
+# One PMCID per line
+# PMC prefix is optional (will be added automatically)
+
+PMC3539452
+PMC3156691
+7654321
+PMC8901234
+
+# Mixed formats work - the tool normalizes them
+# Comments and blank lines are ignored

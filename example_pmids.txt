@@ -1,0 +1,11 @@
+# Example PMID file
+# One PMID per line
+# Lines starting with # are comments
+
+23256146
+21876761
+19876543
+12345678
+
+# You can add comments anywhere
+# The tool will skip blank lines and comments
