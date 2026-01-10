@@ -1,0 +1,57 @@
+# Configuration for SSL DAPT + LoRA on Qwen3-8B
+# This config is optimized for a single GPU with 24-40GB VRAM
+
+model:
+  name: "Qwen/Qwen3-8B"  # or "Qwen/Qwen3-8B-Instruct"
+  use_4bit: true
+  use_8bit: false
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
+  use_nested_quant: false
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  bias: "none"
+
+data:
+  train_path: "./data/corpus.jsonl"
+  eval_path: null
+  text_field: "text"
+  max_seq_length: 2048
+  pack_sequences: true
+
+training:
+  output_dir: "./outputs/qwen3_8b_dapt_lora"
+  num_epochs: 3
+  per_device_train_batch_size: 2  # Smaller batch for 8B model
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8  # Larger accumulation to compensate
+  learning_rate: 1.0e-4  # Slightly lower LR for larger model
+  weight_decay: 0.01
+  warmup_ratio: 0.03
+  lr_scheduler: "cosine"
+  logging_steps: 10
+  save_steps: 500
+  eval_steps: 500
+  save_total_limit: 3
+  fp16: false
+  bf16: true
+  gradient_checkpointing: true
+  optim: "paged_adamw_32bit"
+  max_grad_norm: 0.3
+  seed: 42
+
+logging:
+  use_wandb: false
+  project_name: "qwen3-dapt-lora"
+  run_name: "qwen3_8b_dapt"
