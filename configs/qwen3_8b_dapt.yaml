@@ -1,17 +1,39 @@
-# Configuration for SSL DAPT + LoRA on Qwen3-8B
-# This config is optimized for a single GPU with 24-40GB VRAM
+# =============================================================================
+# DAPT Configuration for Qwen3-8B Base Model
+# =============================================================================
+# Domain-Adaptive Pre-Training to inject domain knowledge into the base model.
+#
+# DAPT Best Practices:
+# - Use BASE model (not instruct) for better knowledge absorption
+# - Lower learning rate for larger models to prevent instability
+# - Longer warmup (10%) for stable training
+# - Full precision recommended (quantization optional for memory constraints)
+# - Higher LoRA rank for more capacity to learn new knowledge
+#
+# Usage:
+#   python run_dapt.py --config configs/qwen3_8b_dapt.yaml
+#   python run_dapt.py --config configs/qwen3_8b_dapt.yaml --use_quantization
+# =============================================================================
 
 model:
-  name: "Qwen/Qwen3-8B"  # or "Qwen/Qwen3-8B-Instruct"
-  use_4bit: true
-  use_8bit: false
+  # Use BASE model for DAPT (not instruct version)
+  name: "Qwen/Qwen3-8B"
+
+  # Quantization - OFF by default for best training quality
+  # Enable via CLI with --use_quantization flag if GPU memory is limited
+  use_quantization: false
+  quantization_bits: 4
   bnb_4bit_compute_dtype: "bfloat16"
   bnb_4bit_quant_type: "nf4"
   use_nested_quant: false
 
+  # Full precision dtype
+  torch_dtype: "bfloat16"
+
 lora:
-  r: 64
-  alpha: 128
+  # Higher rank for DAPT - more capacity to learn domain knowledge
+  r: 128
+  alpha: 256  # 2x rank is common
   dropout: 0.05
   target_modules:
     - q_proj
@@ -28,27 +50,47 @@ data:
   eval_path: null
   text_field: "text"
   max_seq_length: 2048
-  pack_sequences: true
+  pack_sequences: true  # Pack short documents for efficiency
+  min_sequence_length: 64
 
 training:
   output_dir: "./outputs/qwen3_8b_dapt_lora"
+
+  # DAPT typically needs multiple epochs
   num_epochs: 3
-  per_device_train_batch_size: 2  # Smaller batch for 8B model
+
+  # Batch settings (smaller for 8B model)
+  per_device_train_batch_size: 2
   per_device_eval_batch_size: 2
-  gradient_accumulation_steps: 8  # Larger accumulation to compensate
-  learning_rate: 1.0e-4  # Slightly lower LR for larger model
+  gradient_accumulation_steps: 16  # Effective batch size = 32
+
+  # DAPT uses LOWER learning rate - even lower for 8B model
+  learning_rate: 2.0e-5  # Lower for larger model
+
+  # Longer warmup for stable DAPT
+  warmup_ratio: 0.1  # 10% warmup
+
+  # Regularization
   weight_decay: 0.01
-  warmup_ratio: 0.03
+  max_grad_norm: 1.0
+
+  # Scheduler
   lr_scheduler: "cosine"
+
+  # Logging and checkpoints
   logging_steps: 10
   save_steps: 500
   eval_steps: 500
   save_total_limit: 3
+
+  # Precision
   fp16: false
   bf16: true
+
+  # Memory optimization
   gradient_checkpointing: true
-  optim: "paged_adamw_32bit"
-  max_grad_norm: 0.3
+  optim: "adamw_torch"  # Standard AdamW for full precision
+
   seed: 42
 
 logging:
