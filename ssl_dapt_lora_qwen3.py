@@ -101,6 +101,12 @@ class DAPTTrainConfig:
     """Training configuration optimized for Domain-Adaptive Pre-Training."""
     output_dir: str = "./outputs/qwen3_dapt_lora"
 
+    # Hugging Face Hub settings (for saving to remote)
+    push_to_hub: bool = False
+    hub_model_id: str = None  # e.g., "username/model-name"
+    hub_token: str = None  # HF token, or set HF_TOKEN env var
+    hub_private: bool = True  # Make repo private
+
     # DAPT typically needs more epochs for knowledge injection
     num_train_epochs: int = 3
 
@@ -548,7 +554,7 @@ def train_dapt(
     logger.info("Starting DAPT training...")
     trainer.train()
 
-    # Save final model
+    # Save final model locally
     logger.info(f"Saving model to {train_config.output_dir}")
     trainer.save_model()
     tokenizer.save_pretrained(train_config.output_dir)
@@ -557,6 +563,33 @@ def train_dapt(
     lora_output_dir = os.path.join(train_config.output_dir, "lora_adapter")
     model.save_pretrained(lora_output_dir)
     logger.info(f"LoRA adapter saved to {lora_output_dir}")
+
+    # Push to Hugging Face Hub if configured
+    if train_config.push_to_hub and train_config.hub_model_id:
+        logger.info(f"Pushing model to Hugging Face Hub: {train_config.hub_model_id}")
+        try:
+            # Get token from config or environment
+            token = train_config.hub_token or os.environ.get("HF_TOKEN")
+
+            # Push LoRA adapter to Hub
+            model.push_to_hub(
+                train_config.hub_model_id,
+                token=token,
+                private=train_config.hub_private,
+                commit_message="DAPT LoRA adapter for domain knowledge injection",
+            )
+
+            # Push tokenizer
+            tokenizer.push_to_hub(
+                train_config.hub_model_id,
+                token=token,
+                private=train_config.hub_private,
+            )
+
+            logger.info(f"Successfully pushed to: https://huggingface.co/{train_config.hub_model_id}")
+        except Exception as e:
+            logger.error(f"Failed to push to Hub: {e}")
+            logger.info("Model saved locally. You can manually push later.")
 
     # Finish wandb
     if train_config.report_to == "wandb":
@@ -604,6 +637,12 @@ def main():
 Examples:
   # Basic DAPT training (recommended - full precision)
   python ssl_dapt_lora_qwen3.py --data_path ./data/corpus.jsonl
+
+  # Save to custom directory (e.g., mounted drive)
+  python ssl_dapt_lora_qwen3.py --data_path ./data --output_dir /mnt/storage/models/qwen3_dapt
+
+  # Push to Hugging Face Hub after training
+  python ssl_dapt_lora_qwen3.py --data_path ./data --push_to_hub --hub_model_id username/my-dapt-model
 
   # DAPT with 4-bit quantization (for limited GPU memory)
   python ssl_dapt_lora_qwen3.py --data_path ./data --use_quantization --quantization_bits 4
@@ -666,6 +705,12 @@ Examples:
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--use_wandb", action="store_true", help="Enable W&B logging")
 
+    # Hugging Face Hub arguments (for remote saving)
+    parser.add_argument("--push_to_hub", action="store_true", help="Push model to Hugging Face Hub after training")
+    parser.add_argument("--hub_model_id", type=str, default=None, help="Hub model ID (e.g., 'username/model-name')")
+    parser.add_argument("--hub_token", type=str, default=None, help="Hugging Face token (or set HF_TOKEN env var)")
+    parser.add_argument("--hub_private", action="store_true", default=True, help="Make Hub repo private (default: True)")
+
     args = parser.parse_args()
 
     # Create configs
@@ -687,6 +732,10 @@ Examples:
 
     train_config = DAPTTrainConfig(
         output_dir=args.output_dir,
+        push_to_hub=args.push_to_hub,
+        hub_model_id=args.hub_model_id,
+        hub_token=args.hub_token,
+        hub_private=args.hub_private,
         num_train_epochs=args.num_epochs,
         per_device_train_batch_size=args.batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
